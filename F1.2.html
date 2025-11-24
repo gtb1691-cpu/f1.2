@@ -195,12 +195,22 @@
     localStorage.setItem("validDays", JSON.stringify(validDays));
   }
 
-  function undoLast() {
-    if (historyStack.length === 0) return;
-    const prev = historyStack.pop();
-    Object.assign(window, prev);
-    updateAll();
-  }
+function undoLast() {
+  if (historyStack.length === 0) return;
+
+  const prev = historyStack.pop();
+
+  totalTokens = prev.totalTokens;
+  lifetimeTokens = prev.lifetimeTokens;
+  spentTokens = prev.spentTokens;
+  spentBonuses = prev.spentBonuses;
+  maxTokensEver = prev.maxTokensEver;
+  validDays = structuredClone(prev.validDays);
+
+  saveState();
+  updateAll();
+}
+
 
   function addTokens() {
     historyStack.push(structuredClone(currentState()));
@@ -243,12 +253,39 @@
     updateAll();
   }
 
-  function skipDay() {
-    // Registra giornata saltata con null
-    validDays.push({ date: todayString(), tokens: null });
-    saveState();
-    updateAll();
-  }
+ function skipDay() {
+  const today = todayString();
+
+  // Registra la giornata come saltata
+  validDays.push({ date: today, tokens: null });
+  saveState();
+  updateAll();
+
+  // Mostra avviso visivo temporaneo
+  showSkipMessage();
+}
+
+function showSkipMessage() {
+  const msg = document.createElement("div");
+  msg.textContent = "Giornata saltata!";
+  msg.style.position = "fixed";
+  msg.style.bottom = "20px";
+  msg.style.right = "20px";
+  msg.style.background = "#ff4444";
+  msg.style.color = "white";
+  msg.style.padding = "12px 18px";
+  msg.style.borderRadius = "10px";
+  msg.style.fontSize = "18px";
+  msg.style.boxShadow = "0 0 10px rgba(0,0,0,0.5)";
+  msg.style.zIndex = "9999";
+  msg.style.opacity = "1";
+  msg.style.transition = "opacity 0.8s ease";
+
+  document.body.appendChild(msg);
+
+  setTimeout(() => { msg.style.opacity = "0"; }, 1500);
+  setTimeout(() => { msg.remove(); }, 2300);
+}
 
   function resetAll() {
     if (!confirm("Sicuro di voler azzerare tutto?")) return;
