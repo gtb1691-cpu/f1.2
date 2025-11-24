@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Economy – F1</title>
+
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
+  }
+
+  h2 { text-align: center; margin-bottom: 20px; }
+
+  #f1panel {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    background: black;
+    color: white;
+    padding: 12px 18px;
+    border-left: 6px solid red;
+    border-top: 3px solid red;
+    border-bottom: 3px solid red;
+    border-right: 3px solid red;
+    border-radius: 6px;
+    font-size: 18px;
+    z-index: 999;
+    box-shadow: 0 0 8px rgba(0,0,0,0.5);
+  }
+
+  .track-wrapper {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: #222;
+    border-radius: 50px;
+    border: 3px solid #555;
+    scroll-behavior: smooth;
+    margin-top: 80px;
+  }
+
+  .track {
+    position: relative;
+    height: 180px;
+    min-width: 2000px;
+  }
+
+  .car {
+    position: absolute;
+    top: 90px;
+    left: 0;
+    font-size: 60px;
+    transition: left 0.8s ease-out;
+    transform: scaleX(-1);
+    z-index: 3;
+  }
+
+  .start-light {
+    position: absolute;
+    top: 20px;
+    left: 40px;
+    width: 40px;
+    padding: 8px;
+    background: black;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 0 6px #000;
+    z-index: 5;
+  }
+
+  .light {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #330000;
+    transition: background 0.3s ease;
+    border: 1px solid #222;
+  }
+
+  .light.red { background: red; }
+  .light.green { background: #00aa00; }
+
+  .checkpoint {
+    position: absolute;
+    top: 10px;
+    font-size: 24px;
+    color: white;
+    text-align: center;
+    transform: translateX(-50%);
+  }
+
+  #mediaPanel {
+    margin-top: 20px;
+    float: right;
+    background: black;
+    color: white;
+    padding: 15px;
+    width: 260px;
+    border: 3px solid red;
+    border-radius: 10px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    font-size: 18px;
+  }
+
+  input, button {
+    font-size: 18px;
+    padding: 6px 10px;
+    margin: 5px;
+  }
+</style>
+</head>
+
+<body>
+
+<h2>🏎️ Token Economy – Pista F1</h2>
+
+<div id="f1panel">
+  <div id="panelTokens">TOKEN TOTALI: 0</div>
+  <div id="panelTokensSpent">TOKEN SPESI: 0</div>
+  <div id="panelBonus">BONUS DISPONIBILI: 0</div>
+</div>
+
+<div class="track-wrapper" id="trackWrapper">
+  <div class="track" id="track">
+
+    <div id="trafficLight" class="start-light">
+      <div class="light red" id="startLight"></div>
+    </div>
+
+    <div class="car" id="car">🏎️</div>
+
+  </div>
+</div>
+
+<div id="mediaPanel">
+  <b>MEDIA ULTIMI 15 GIORNI:</b><br>
+  <span id="mediaValue">0</span>
+</div>
+
+<div style="text-align:center; margin-top:10px;">
+  <input type="number" step="0.1" id="tokenAdd" placeholder="Aggiungi token">
+  <button onclick="addTokens()">Aggiungi Token</button>
+  <br>
+  <input type="number" step="0.1" id="tokenSpent" placeholder="Token spesi">
+  <button onclick="spendTokens()">Registra Spesa Token</button>
+  <br><br>
+  <input type="number" step="1" id="bonusSpent" placeholder="Bonus speso">
+  <button onclick="spendBonus()">Registra Bonus Speso</button>
+  <br><br>
+  <button onclick="skipDay()">Salta Giornata</button>
+  <button style="background:#b30000; color:white;" onclick="undoLast()">⟲ Annulla</button>
+  <button style="background:#444; color:white;" onclick="resetAll()">Reset Totale</button>
+</div>
+
+<script>
+  let totalTokens = 0;
+  let lifetimeTokens = 0;
+  let spentTokens = 0;
+  let spentBonuses = 0;
+  let maxTokensEver = 0;
+
+  let hasMoved = false;
+  const BONUS_EVERY = 50;
+
+  let historyStack = [];
+
+  // ⭐ Registro dei giorni VALIDATI (no sabato, no domenica, no giorni saltati)
+  // Array di oggetti: { date, tokens }
+  let validDays = JSON.parse(localStorage.getItem("validDays") || "[]");
+
+  // CARICA tutto
+  window.onload = () => {
+    if (localStorage.getItem("savedState")) {
+      const s = JSON.parse(localStorage.getItem("savedState"));
+      totalTokens = s.totalTokens;
+      lifetimeTokens = s.lifetimeTokens;
+      spentTokens = s.spentTokens;
+      spentBonuses = s.spentBonuses;
+      maxTokensEver = s.maxTokensEver;
+    }
+    updateAll();
+  };
+
+  function saveState() {
+    localStorage.setItem("savedState", JSON.stringify({
+      totalTokens, lifetimeTokens, spentTokens, spentBonuses, maxTokensEver
+    }));
+    localStorage.setItem("validDays", JSON.stringify(validDays));
+  }
+
+  function undoLast() {
+    if (historyStack.length === 0) return;
+    const prev = historyStack.pop();
+    Object.assign(window, prev);
+    updateAll();
+  }
+
+  function addTokens() {
+    historyStack.push(structuredClone(currentState()));
+
+    const val = parseFloat(document.getElementById("tokenAdd").value.replace(",", ".")) || 0;
+    if (val <= 0) return;
+
+    totalTokens += val;
+    lifetimeTokens += val;
+
+    registerDay(val);
+
+    document.getElementById("tokenAdd").value = "";
+    updateAll();
+  }
+
+  function spendTokens() {
+    historyStack.push(structuredClone(currentState()));
+
+    const val = parseFloat(document.getElementById("tokenSpent").value.replace(",", ".")) || 0;
+    if (val <= 0) return;
+
+    spentTokens += val;
+    totalTokens -= val;
+    if (totalTokens < 0) totalTokens = 0;
+
+    document.getElementById("tokenSpent").value = "";
+    updateAll();
+  }
+
+  function spendBonus() {
+    historyStack.push(structuredClone(currentState()));
+
+    const val = parseInt(document.getElementById("bonusSpent").value) || 0;
+    if (val <= 0) return;
+
+    spentBonuses += val;
+
+    document.getElementById("bonusSpent").value = "";
+    updateAll();
+  }
+
+  function skipDay() {
+    // Registra giornata saltata con null
+    validDays.push({ date: todayString(), tokens: null });
+    saveState();
+    updateAll();
+  }
+
+  function resetAll() {
+    if (!confirm("Sicuro di voler azzerare tutto?")) return;
+    totalTokens = 0;
+    lifetimeTokens = 0;
+    spentTokens = 0;
+    spentBonuses = 0;
+    maxTokensEver = 0;
+    validDays = [];
+    historyStack = [];
+    saveState();
+    updateAll();
+  }
+
+  function currentState() {
+    return {
+      totalTokens, lifetimeTokens, spentTokens, spentBonuses, maxTokensEver,
+      validDays: structuredClone(validDays)
+    };
+  }
+
+  function registerDay(tokensAdded) {
+    const today = todayString();
+    const dow = new Date().getDay();
+
+    // 0 = domenica, 6 = sabato → NON registrare
+    if (dow === 0 || dow === 6) return;
+
+    // Se la giornata è stata "saltata", non si registra
+    if (validDays.some(d => d.date === today && d.tokens === null)) return;
+
+    // Se giornata già registrata: somma i token
+    const existing = validDays.find(d => d.date === today);
+    if (existing) {
+      existing.tokens += tokensAdded;
+    } else {
+      validDays.push({ date: today, tokens: tokensAdded });
+    }
+
+    saveState();
+  }
+
+  function todayString() {
+    const d = new Date();
+    return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+  }
+
+  function computeMedia15() {
+    const valid = validDays.filter(d => d.tokens !== null);
+
+    const last15 = valid.slice(-15);
+    if (last15.length === 0) return 0;
+
+    const sum = last15.reduce((a, b) => a + b.tokens, 0);
+    return (sum / last15.length).toFixed(2).replace(".", ",");
+  }
+
+  function updateMetro() {
+    document.getElementById("mediaValue").textContent = computeMedia15();
+  }
+
+  function updateAll() {
+    const car = document.getElementById("car");
+    const track = document.getElementById("track");
+    const wrapper = document.getElementById("trackWrapper");
+
+    if (totalTokens > maxTokensEver) maxTokensEver = totalTokens;
+
+    let leftPos = maxTokensEver * 10;
+    car.style.left = leftPos + "px";
+
+    if (!hasMoved && totalTokens > 0) {
+      hasMoved = true;
+      document.getElementById("startLight").classList.remove("red");
+      document.getElementById("startLight").classList.add("green");
+    }
+
+    if (leftPos + 300 > track.offsetWidth) {
+      track.style.minWidth = (leftPos + 600) + "px";
+    }
+
+    generateCheckpoints();
+
+    wrapper.scrollLeft = Math.max(0, leftPos - wrapper.offsetWidth / 2);
+
+    const totalBonusEarned = Math.floor(lifetimeTokens / BONUS_EVERY);
+    const available = Math.max(0, totalBonusEarned - spentBonuses);
+
+    document.getElementById("panelTokens").textContent =
+      "TOKEN TOTALI: " + totalTokens.toString().replace(".", ",");
+
+    document.getElementById("panelTokensSpent").textContent =
+      "TOKEN SPESI: " + spentTokens.toString().replace(".", ",");
+
+    document.getElementById("panelBonus").textContent =
+      "BONUS DISPONIBILI: " + available;
+
+    updateMetro();
+    saveState();
+  }
+
+  function generateCheckpoints() {
+    const track = document.getElementById("track");
+    track.querySelectorAll(".checkpoint").forEach(e => e.remove());
+
+    const needed = Math.floor(maxTokensEver / BONUS_EVERY);
+
+    for (let i = 1; i <= needed; i++) {
+      const pos = i * BONUS_EVERY * 10;
+      const cp = document.createElement("div");
+      cp.className = "checkpoint";
+      cp.style.left = pos + "px";
+      cp.innerHTML = `🏁⭐${i}<br>(${i * 50} pt)`;
+      track.appendChild(cp);
+    }
+  }
+</script>
+
+</body>
+</html>
+
