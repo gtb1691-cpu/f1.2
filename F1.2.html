@@ -167,7 +167,7 @@
   let maxTokensEver = 0;
 
   let hasMoved = false;
-  const BONUS_EVERY = 50;
+  const BONUS_EVERY = 35;
 
   let historyStack = [];
 
@@ -398,7 +398,7 @@ function showSkipMessage() {
       const cp = document.createElement("div");
       cp.className = "checkpoint";
       cp.style.left = pos + "px";
-      cp.innerHTML = `🏁⭐${i}<br>(${i * 50} pt)`;
+      cp.innerHTML = `🏁⭐${i}<br>(${i * 35} pt)`;
       track.appendChild(cp);
     }
   }
